@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod extract_tickets;
 mod parse_notes;
 mod utils;
 
@@ -29,6 +30,7 @@ fn main() {
 
     // Dispatch to the appropriate mode handler
     let result = match config.mode {
+        Mode::ExtractTickets => extract_tickets::run(&config),
         Mode::ParseNotes => parse_notes::run(&config),
         _ => todo!(),
     };
