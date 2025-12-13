@@ -13,6 +13,7 @@
 mod config;
 mod extract_tickets;
 mod parse_notes;
+mod update_tickets;
 mod utils;
 
 use config::{Config, Mode};
@@ -32,6 +33,7 @@ fn main() {
     let result = match config.mode {
         Mode::ExtractTickets => extract_tickets::run(&config),
         Mode::ParseNotes => parse_notes::run(&config),
+        Mode::UpdateTickets => update_tickets::run(&config),
         _ => todo!(),
     };
 
