@@ -11,9 +11,10 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod parse_notes;
 mod utils;
 
-use config::Config;
+use config::{Config, Mode};
 
 fn main() {
     // Parse command-line arguments into configuration
@@ -25,4 +26,16 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    // Dispatch to the appropriate mode handler
+    let result = match config.mode {
+        Mode::ParseNotes => parse_notes::run(&config),
+        _ => todo!(),
+    };
+
+    // Handle any errors from mode execution
+    if let Err(error) = result {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
 }
