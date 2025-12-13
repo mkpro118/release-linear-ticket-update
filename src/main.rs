@@ -10,6 +10,18 @@
 #![forbid(future_incompatible)]
 #![forbid(unsafe_code)]
 
+mod config;
+
+use config::Config;
+
 fn main() {
-    todo!();
+    // Parse command-line arguments into configuration
+    let config = match Config::from_args() {
+        Ok(config) => config,
+        Err(error) => {
+            // Print errors to stderr and exit with failure code
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
 }
