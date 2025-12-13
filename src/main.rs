@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod utils;
 
 use config::Config;
 
