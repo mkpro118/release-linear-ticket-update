@@ -53,6 +53,11 @@ pub struct Config {
     pub input_sources: Vec<InputSource>,
     /// Whether to run in dry-run mode (preview without making changes)
     pub dry_run: bool,
+    /// If true, update tickets regardless of current workflow state.
+    ///
+    /// By default, tickets are only updated if their current state name is
+    /// "Passing" (case-insensitive).
+    pub update_all_statuses: bool,
 }
 
 impl Config {
@@ -113,6 +118,7 @@ impl Config {
     ///   --linear-api-key KEY   Linear API authentication key
     ///   --linear-org ORG       Linear organization identifier
     ///   --dry-run              Preview changes without updating
+    ///   --update-all-statuses  Update regardless of current Linear state
     ///
     /// Files:
     ///   -                      Read from stdin (can be mixed with files)
@@ -141,6 +147,7 @@ impl Config {
             linear_org: parsed.linear_org,
             input_sources: parsed.input_sources,
             dry_run: parsed.dry_run,
+            update_all_statuses: parsed.update_all_statuses,
         })
     }
 }
@@ -152,6 +159,7 @@ struct ParsedArgs {
     linear_org: Option<String>,
     input_sources: Vec<InputSource>,
     dry_run: bool,
+    update_all_statuses: bool,
 }
 
 fn parse_mode_and_start_index(
@@ -183,87 +191,22 @@ fn parse_flags_and_inputs(
         linear_org: None,
         input_sources: Vec::new(),
         dry_run: false,
+        update_all_statuses: false,
     };
 
     let mut stdin_used = false;
     let mut i = start_idx;
     while i < args.len() {
+        if parse_common_flags(args, &mut i, &mut parsed)? {
+            continue;
+        }
+
         let arg = args
             .get(i)
             .ok_or_else(|| "Internal error while parsing args".to_string())?;
 
-        if arg == "--dry-run" {
-            parsed.dry_run = true;
-            i += 1;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--release-tag=") {
-            parsed.release_tag = Some(value.to_string());
-            i += 1;
-            continue;
-        }
-        if arg == "--release-tag" {
-            let value = args
-                .get(i + 1)
-                .ok_or_else(|| "Missing value for --release-tag".to_string())?;
-            parsed.release_tag = Some(value.clone());
-            i += 2;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--linear-api-key=") {
-            parsed.linear_api_key = Some(value.to_string());
-            i += 1;
-            continue;
-        }
-        if arg == "--linear-api-key" {
-            let value = args.get(i + 1).ok_or_else(|| {
-                "Missing value for --linear-api-key".to_string()
-            })?;
-            parsed.linear_api_key = Some(value.clone());
-            i += 2;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--linear-org=") {
-            parsed.linear_org = Some(value.to_string());
-            i += 1;
-            continue;
-        }
-        if arg == "--linear-org" {
-            let value = args
-                .get(i + 1)
-                .ok_or_else(|| "Missing value for --linear-org".to_string())?;
-            parsed.linear_org = Some(value.clone());
-            i += 2;
-            continue;
-        }
-
         if arg == "-" {
-            match mode {
-                Mode::ExtractTickets | Mode::UpdateTickets => {
-                    if stdin_used {
-                        return Err(
-                            "stdin (-) cannot be specified more than once"
-                                .to_string(),
-                        );
-                    }
-                    parsed.input_sources.push(InputSource::Stdin);
-                    stdin_used = true;
-                }
-                Mode::ParseNotes => {
-                    return Err(
-                        "parse-notes reads from stdin implicitly; '-' is not accepted".to_string(),
-                    );
-                }
-                Mode::Orchestrator => {
-                    return Err(
-                        "Orchestrator mode does not accept stdin ('-')"
-                            .to_string(),
-                    );
-                }
-            }
+            handle_stdin_arg(mode, &mut parsed, &mut stdin_used)?;
             i += 1;
             continue;
         }
@@ -272,24 +215,124 @@ fn parse_flags_and_inputs(
             return Err(format!("Unknown flag: {arg}"));
         }
 
-        match mode {
-            Mode::ExtractTickets | Mode::UpdateTickets => {
-                parsed.input_sources.push(InputSource::File(arg.clone()));
-            }
-            Mode::ParseNotes => {
-                return Err(
-                    "parse-notes does not accept file arguments".to_string()
-                );
-            }
-            Mode::Orchestrator => {
-                return Err("Orchestrator mode does not accept file arguments"
-                    .to_string());
-            }
-        }
+        handle_file_arg(mode, arg, &mut parsed)?;
         i += 1;
     }
 
     Ok(parsed)
+}
+
+fn parse_common_flags(
+    args: &[String],
+    i: &mut usize,
+    parsed: &mut ParsedArgs,
+) -> Result<bool, String> {
+    let arg = args
+        .get(*i)
+        .ok_or_else(|| "Internal error while parsing args".to_string())?;
+
+    if arg == "--dry-run" {
+        parsed.dry_run = true;
+        *i += 1;
+        return Ok(true);
+    }
+
+    if arg == "--update-all-statuses" {
+        parsed.update_all_statuses = true;
+        *i += 1;
+        return Ok(true);
+    }
+
+    if let Some(value) = arg.strip_prefix("--release-tag=") {
+        parsed.release_tag = Some(value.to_string());
+        *i += 1;
+        return Ok(true);
+    }
+    if arg == "--release-tag" {
+        let value = args
+            .get(*i + 1)
+            .ok_or_else(|| "Missing value for --release-tag".to_string())?;
+        parsed.release_tag = Some(value.clone());
+        *i += 2;
+        return Ok(true);
+    }
+
+    if let Some(value) = arg.strip_prefix("--linear-api-key=") {
+        parsed.linear_api_key = Some(value.to_string());
+        *i += 1;
+        return Ok(true);
+    }
+    if arg == "--linear-api-key" {
+        let value = args
+            .get(*i + 1)
+            .ok_or_else(|| "Missing value for --linear-api-key".to_string())?;
+        parsed.linear_api_key = Some(value.clone());
+        *i += 2;
+        return Ok(true);
+    }
+
+    if let Some(value) = arg.strip_prefix("--linear-org=") {
+        parsed.linear_org = Some(value.to_string());
+        *i += 1;
+        return Ok(true);
+    }
+    if arg == "--linear-org" {
+        let value = args
+            .get(*i + 1)
+            .ok_or_else(|| "Missing value for --linear-org".to_string())?;
+        parsed.linear_org = Some(value.clone());
+        *i += 2;
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+fn handle_stdin_arg(
+    mode: Mode,
+    parsed: &mut ParsedArgs,
+    stdin_used: &mut bool,
+) -> Result<(), String> {
+    match mode {
+        Mode::ExtractTickets | Mode::UpdateTickets => {
+            if *stdin_used {
+                return Err(
+                    "stdin (-) cannot be specified more than once".to_string()
+                );
+            }
+            parsed.input_sources.push(InputSource::Stdin);
+            *stdin_used = true;
+            Ok(())
+        }
+        Mode::ParseNotes => Err(
+            "parse-notes reads from stdin implicitly; '-' is not accepted"
+                .to_string(),
+        ),
+        Mode::Orchestrator => {
+            Err("Orchestrator mode does not accept stdin ('-')".to_string())
+        }
+    }
+}
+
+fn handle_file_arg(
+    mode: Mode,
+    arg: &str,
+    parsed: &mut ParsedArgs,
+) -> Result<(), String> {
+    match mode {
+        Mode::ExtractTickets | Mode::UpdateTickets => {
+            parsed
+                .input_sources
+                .push(InputSource::File(arg.to_string()));
+            Ok(())
+        }
+        Mode::ParseNotes => {
+            Err("parse-notes does not accept file arguments".to_string())
+        }
+        Mode::Orchestrator => {
+            Err("Orchestrator mode does not accept file arguments".to_string())
+        }
+    }
 }
 
 fn apply_defaults(mode: Mode, parsed: &mut ParsedArgs) {
@@ -306,9 +349,11 @@ fn validate_config(mode: Mode, parsed: &ParsedArgs) -> Result<(), String> {
             if parsed.linear_api_key.is_some()
                 || parsed.linear_org.is_some()
                 || parsed.dry_run
+                || parsed.update_all_statuses
             {
                 return Err(
-                    "parse-notes does not accept Linear credentials or --dry-run".to_string(),
+                    "parse-notes does not accept Linear credentials, --dry-run, or --update-all-statuses"
+                        .to_string(),
                 );
             }
         }
@@ -317,9 +362,11 @@ fn validate_config(mode: Mode, parsed: &ParsedArgs) -> Result<(), String> {
                 || parsed.linear_api_key.is_some()
                 || parsed.linear_org.is_some()
                 || parsed.dry_run
+                || parsed.update_all_statuses
             {
                 return Err(
-                    "extract-tickets does not accept --release-tag, Linear credentials, or --dry-run".to_string(),
+                    "extract-tickets does not accept --release-tag, Linear credentials, --dry-run, or --update-all-statuses"
+                        .to_string(),
                 );
             }
         }

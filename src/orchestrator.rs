@@ -50,6 +50,11 @@ use crate::config::Config;
 /// If `config.dry_run` is true, passes `--dry-run` flag to update-tickets
 /// stage.
 ///
+/// # Workflow State Filtering
+/// By default, tickets are only updated if their current state name is
+/// "Passing". If `config.update_all_statuses` is true, passes
+/// `--update-all-statuses` to update-tickets.
+///
 /// # Output
 /// - Forwards stdout from update-tickets to parent stdout
 /// - Forwards stderr from update-tickets to parent stderr
@@ -115,6 +120,10 @@ pub fn run(config: &Config) -> Result<(), String> {
     // Add --dry-run flag if in preview mode
     if config.dry_run {
         update_args.push("--dry-run");
+    }
+
+    if config.update_all_statuses {
+        update_args.push("--update-all-statuses");
     }
 
     // Spawns: release-linear-ticket-update update-tickets --linear-api-key

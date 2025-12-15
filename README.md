@@ -82,6 +82,9 @@ release-linear-ticket-update extract-tickets prs.txt | release-linear-ticket-upd
 
 # Dry-run mode (check what would be updated without making changes)
 release-linear-ticket-update update-tickets --dry-run --linear-api-key your_key --linear-org myorg tickets.txt
+
+# Update regardless of current Linear state
+release-linear-ticket-update update-tickets --update-all-statuses --linear-api-key your_key --linear-org myorg tickets.txt
 ```
 
 **Required:**
@@ -90,6 +93,7 @@ release-linear-ticket-update update-tickets --dry-run --linear-api-key your_key 
 
 **Optional:**
 - `--dry-run` flag: Preview which tickets would be updated without actually updating them
+- `--update-all-statuses` flag: Update tickets even if they are not currently in "Passing" state
 
 **Output:**
 - stdout: Successfully updated ticket URLs (or URLs that would be updated in dry-run mode)
@@ -98,9 +102,12 @@ release-linear-ticket-update update-tickets --dry-run --linear-api-key your_key 
 **Dry-run Mode:**
 When `--dry-run` is specified:
 - Still queries Linear API to check each ticket's current state
-- Outputs only tickets that are NOT already Done/Completed (tickets that would be updated)
+- Outputs only tickets that would be updated
 - Skips the actual mutation (does not update tickets)
 - Useful for previewing changes before running the actual update
+
+**Workflow State Filtering:**
+By default, tickets are only updated if their current state name is "Passing" (case-insensitive). Use `--update-all-statuses` to update any ticket that is not already Done/Completed.
 
 ### 4. Orchestrator Mode (default)
 
@@ -119,6 +126,9 @@ release-linear-ticket-update --release-tag v1.2.3 --linear-api-key key --linear-
 
 # Dry-run mode
 release-linear-ticket-update --dry-run --release-tag v1.2.3 --linear-api-key key --linear-org myorg
+
+# Update regardless of current Linear state
+release-linear-ticket-update --update-all-statuses --release-tag v1.2.3 --linear-api-key key --linear-org myorg
 ```
 
 **Required:**
@@ -128,6 +138,7 @@ release-linear-ticket-update --dry-run --release-tag v1.2.3 --linear-api-key key
 
 **Optional:**
 - `--dry-run` flag: Preview which tickets would be updated without making changes
+- `--update-all-statuses` flag: Update tickets even if they are not currently in "Passing" state
 
 ## Examples
 

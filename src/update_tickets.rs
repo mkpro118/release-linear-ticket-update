@@ -8,13 +8,14 @@
 //! For each ticket ID:
 //! 1. Query current state from Linear API
 //! 2. Skip if already completed (Done/Completed)
-//! 3. Find the team's completed state ID
-//! 4. Update ticket to completed state (unless dry-run)
+//! 3. Skip unless current state name is "Passing"
+//! 4. Find the team's completed state ID
+//! 5. Update ticket to completed state (unless dry-run)
 //!
 //! ## Dry-Run Mode
 //! When `--dry-run` is enabled:
 //! - Queries ticket state but skips mutation
-//! - Outputs only tickets that would be changed
+//! - Outputs only tickets that would be updated
 //! - Suppresses output for already-completed tickets
 
 use crate::config::Config;
@@ -43,9 +44,9 @@ macro_rules! log {
 /// # Dry-Run Mode
 /// If `config.dry_run` is true:
 /// - Prints initial message: "Dry-run mode enabled. The following issues are
-///   not marked as Done or Completed:"
+///   would be marked as Done or Completed:"
 /// - Queries each ticket's state but skips the update mutation
-/// - Only outputs URLs for tickets that would be changed
+/// - Only outputs URLs for tickets that would be updated
 ///
 /// # Errors
 /// Returns an error if:
@@ -62,7 +63,7 @@ pub fn run(config: &Config) -> Result<(), String> {
     // Print dry-run header if in preview mode
     if config.dry_run {
         log!(
-            "Dry-run mode enabled. The following issues are not marked as Done or Completed:"
+            "Dry-run mode enabled. The following issues would be marked as Done or Completed:"
         );
     }
 
@@ -95,6 +96,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             &linear_org,
             &linear_api_key,
             config.dry_run,
+            config.update_all_statuses,
         ) {
             Ok(Some(success_url)) => {
                 println!("{success_url}");
@@ -135,16 +137,17 @@ pub fn run(config: &Config) -> Result<(), String> {
 /// # Dry-Run Behavior
 /// If `dry_run` is true:
 /// - Queries ticket state to check if it's completed
-/// - Returns `Ok(None)` if already completed (no output)
-/// - Returns `Ok(Some(url))` if would be updated (output URL)
+/// - Returns `Ok(Some(url))` if it would be updated (output URL)
+/// - Returns `Ok(None)` otherwise (no output)
 /// - Skips all mutation logic (team lookup, state update)
 ///
 /// # Normal Mode Behavior
 /// 1. Queries current issue state and team ID
 /// 3. If already Done/Completed, returns success without updating
-/// 4. Finds the team's completed state ID
-/// 5. Updates issue to completed state
-/// 6. Returns success
+/// 4. If current state is not "Passing", skips without updating
+/// 5. Finds the team's completed state ID
+/// 6. Updates issue to completed state
+/// 7. Returns success
 ///
 /// # Errors
 /// Returns an error if:
@@ -156,6 +159,7 @@ fn update_single_ticket(
     org: &str,
     api_key: &str,
     dry_run: bool,
+    update_all_statuses: bool,
 ) -> Result<Option<String>, String> {
     let url = issue_url(org, issue_id);
 
@@ -175,13 +179,15 @@ fn update_single_ticket(
     // Check if ticket is already in a completed state (matches
     // scripts/linear.sh semantics).
     let is_completed = state_is_done_or_completed(&current_state_name);
+    let is_passing = state_is_passing(&current_state_name);
+    let should_update = !is_completed && (update_all_statuses || is_passing);
 
     // In dry-run mode, return early after state check
     if dry_run {
-        return if is_completed {
-            Ok(None) // Already completed - suppress output
+        return if should_update {
+            Ok(Some(url))
         } else {
-            Ok(Some(url)) // Would be updated - output URL
+            Ok(None)
         };
     }
 
@@ -192,6 +198,13 @@ fn update_single_ticket(
     if is_completed {
         log!("Issue {issue_id} is already in a completed state, skipping.");
         return Ok(Some(url));
+    }
+
+    if !should_update {
+        log!(
+            "Issue {issue_id} is not in \"Passing\" state, skipping (use --update-all-statuses to override)."
+        );
+        return Ok(None);
     }
 
     // Get team ID for this issue
@@ -394,4 +407,8 @@ fn ensure_no_graphql_errors(response_json: &str) -> Result<(), String> {
 
 fn state_is_done_or_completed(state_name: &str) -> bool {
     state_name.contains("Done") || state_name.contains("Completed")
+}
+
+fn state_is_passing(state_name: &str) -> bool {
+    state_name.eq_ignore_ascii_case("Passing")
 }
