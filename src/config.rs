@@ -135,6 +135,19 @@ impl Config {
     pub fn from_args() -> Result<Self, String> {
         let args: Vec<String> = env::args().collect();
 
+        if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+            handle_help(&args);
+            std::process::exit(0);
+        }
+
+        if args.iter().any(|arg| arg == "--version") {
+            println!(
+                "release-linear-ticket-update {}",
+                env!("CARGO_PKG_VERSION")
+            );
+            std::process::exit(0);
+        }
+
         let (mode, start_idx) = parse_mode_and_start_index(&args)?;
         let mut parsed = parse_flags_and_inputs(mode, &args, start_idx)?;
         apply_defaults(mode, &mut parsed);
@@ -391,4 +404,117 @@ fn validate_config(mode: Mode, parsed: &ParsedArgs) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn handle_help(args: &[String]) {
+    let mode_arg = args.get(1).map(std::string::String::as_str);
+    match mode_arg {
+        Some("parse-notes") => print_parse_notes_help(),
+        Some("extract-tickets") => print_extract_tickets_help(),
+        Some("update-tickets") => print_update_tickets_help(),
+        _ => print_general_help(),
+    }
+}
+
+fn print_general_help() {
+    println!(concat!(
+        "release-linear-ticket-update ",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        "\n",
+        "A tool for automatically marking Linear tickets as completed when a GitHub release is published.\n",
+        "\n",
+        "USAGE:\n",
+        "    release-linear-ticket-update [MODE] [OPTIONS] [FILES...]\n",
+        "\n",
+        "MODES:\n",
+        "    parse-notes        Parse release notes to extract PR numbers\n",
+        "    extract-tickets    Extract Linear ticket IDs from PR content\n",
+        "    update-tickets     Update Linear tickets to completed state\n",
+        "    (default)          Run orchestrator mode (full pipeline)\n",
+        "\n",
+        "OPTIONS:\n",
+        "    --help, -h         Print this help message\n",
+        "    --version          Print version information\n",
+        "\n",
+        "    --release-tag TAG\n",
+        "            GitHub release tag (required for parse-notes and orchestrator modes)\n",
+        "\n",
+        "    --linear-api-key KEY\n",
+        "            Linear API authentication key (can also be set via LINEAR_API_KEY env var)\n",
+        "\n",
+        "    --linear-org ORG\n",
+        "            Linear organization identifier (can also be set via LINEAR_ORG env var)\n",
+        "\n",
+        "    --dry-run\n",
+        "            Preview changes without updating\n",
+        "\n",
+        "    --update-all-statuses\n",
+        "            Update regardless of current Linear state (default: only \"Passing\")\n",
+        "\n",
+        "See 'release-linear-ticket-update <MODE> --help' for more information on a specific mode."
+    ));
+}
+
+fn print_parse_notes_help() {
+    println!(concat!(
+        "release-linear-ticket-update parse-notes\n",
+        "\n",
+        "Extracts Pull Request numbers from release notes.\n",
+        "\n",
+        "USAGE:\n",
+        "    release-linear-ticket-update parse-notes --release-tag <TAG>\n",
+        "    echo \"...\" | release-linear-ticket-update parse-notes\n",
+        "\n",
+        "OPTIONS:\n",
+        "    --release-tag <TAG>    GitHub release tag (required if not using stdin)\n",
+        "    --help, -h             Print this help message"
+    ));
+}
+
+fn print_extract_tickets_help() {
+    println!(concat!(
+        "release-linear-ticket-update extract-tickets\n",
+        "\n",
+        "Finds Linear ticket IDs from Pull Requests by examining PR title, body, comments, and commit messages.\n",
+        "\n",
+        "USAGE:\n",
+        "    release-linear-ticket-update extract-tickets [FILES...]\n",
+        "    cat prs.txt | release-linear-ticket-update extract-tickets\n",
+        "\n",
+        "ARGS:\n",
+        "    [FILES...]    Files containing PR numbers (one per line). Reads from stdin if no files provided or if '-' is used.\n",
+        "\n",
+        "OPTIONS:\n",
+        "    --help, -h    Print this help message"
+    ));
+}
+
+fn print_update_tickets_help() {
+    println!(concat!(
+        "release-linear-ticket-update update-tickets\n",
+        "\n",
+        "Marks Linear tickets as completed using the Linear GraphQL API.\n",
+        "\n",
+        "USAGE:\n",
+        "    release-linear-ticket-update update-tickets [OPTIONS] [FILES...]\n",
+        "\n",
+        "ARGS:\n",
+        "    [FILES...]    Files containing ticket IDs (one per line). Reads from stdin if no files provided or if '-' is used.\n",
+        "\n",
+        "OPTIONS:\n",
+        "    --linear-api-key <KEY>\n",
+        "            Linear API authentication key\n",
+        "\n",
+        "    --linear-org <ORG>\n",
+        "            Linear organization identifier\n",
+        "\n",
+        "    --dry-run\n",
+        "            Preview changes without updating\n",
+        "\n",
+        "    --update-all-statuses\n",
+        "            Update regardless of current Linear state\n",
+        "\n",
+        "    --help, -h    Print this help message"
+    ));
 }
