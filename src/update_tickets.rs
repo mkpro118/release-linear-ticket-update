@@ -182,6 +182,8 @@ fn update_single_ticket(
     let is_passing = state_is_passing(&current_state_name);
     let should_update = !is_completed && (update_all_statuses || is_passing);
 
+    log!("Current state: {current_state_name}");
+
     // In dry-run mode, return early after state check
     if dry_run {
         return if should_update {
@@ -190,9 +192,6 @@ fn update_single_ticket(
             Ok(None)
         };
     }
-
-    // Normal mode: Log current state
-    log!("Current state: {current_state_name}");
 
     // Skip update if already completed
     if is_completed {
